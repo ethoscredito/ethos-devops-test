@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EthosPay · Prueba DevOps</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --surface: #111827;
+      --surface-2: #1a2332;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --ethos: #6366f1;
+      --success: #22c55e;
+      --step: #818cf8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    .bg-grid {
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent);
+      pointer-events: none;
+    }
+    .glow {
+      position: fixed; width: 500px; height: 500px; border-radius: 50%;
+      filter: blur(100px); opacity: 0.35; pointer-events: none;
+    }
+    .glow-1 { top: -150px; left: 50%; transform: translateX(-50%); background: var(--ethos); }
+    .wrap { position: relative; max-width: 760px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 2.5rem; flex-wrap: wrap; gap: 1rem;
+    }
+    .logo { display: flex; align-items: center; gap: 0.75rem; }
+    .logo-mark {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--ethos), var(--accent));
+      display: grid; place-items: center; font-weight: 700; font-size: 1.1rem;
+    }
+    .logo-text { font-weight: 600; font-size: 1.1rem; }
+    .logo-text span { color: var(--muted); font-weight: 400; font-size: 0.8rem; display: block; }
+    .badge {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 0.35rem 0.75rem; border-radius: 999px;
+      background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35); color: #86efac;
+    }
+    .hero { margin-bottom: 2rem; }
+    .hero h1 {
+      font-size: clamp(1.6rem, 4vw, 2.1rem); font-weight: 700;
+      letter-spacing: -0.03em; line-height: 1.2; margin-bottom: 0.6rem;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, #a5b4fc, #60a5fa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .hero p { color: var(--muted); font-size: 1rem; max-width: 40rem; margin-bottom: 0.5rem; }
+    .status-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 2rem; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 0.45rem;
+      font-size: 0.78rem; font-weight: 500; padding: 0.45rem 0.9rem;
+      border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border);
+    }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .section-title {
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--step); margin-bottom: 1rem;
+    }
+    .steps { display: flex; flex-direction: column; gap: 0; }
+    .step {
+      display: grid; grid-template-columns: 2.5rem 1fr; gap: 1rem;
+      padding: 1.25rem 0; border-bottom: 1px solid var(--border);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num {
+      width: 2.5rem; height: 2.5rem; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; color: var(--step);
+    }
+    .step h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.35rem; }
+    .step p { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .step p:last-of-type { margin-bottom: 0; }
+    .step code, .note code {
+      font-family: ui-monospace, monospace; font-size: 0.78rem;
+      background: var(--surface-2); padding: 0.15rem 0.4rem; border-radius: 4px;
+      color: #e2e8f0;
+    }
+    .code-block {
+      display: block;
+      font-family: ui-monospace, monospace;
+      font-size: 0.76rem;
+      line-height: 1.5;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      margin-top: 0.35rem;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+    .note {
+      font-size: 0.8rem; color: var(--muted); padding: 0.75rem 1rem;
+      background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 8px; margin-top: 1.5rem;
+    }
+    .note strong { color: var(--text); }
+    .notice {
+      font-size: 0.8rem; color: var(--muted); padding: 0.75rem 1rem;
+      background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.25);
+      border-radius: 8px; margin-bottom: 1.5rem;
+    }
+    .notice strong { color: #fde68a; }
+    footer {
+      margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border);
+      font-size: 0.78rem; color: var(--muted); text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="glow glow-1" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <header>
+      <div class="logo">
+        <div class="logo-mark" aria-hidden="true">E</div>
+        <div class="logo-text">
+          EthosPay
+          <span>Prueba técnica DevOps</span>
+        </div>
+      </div>
+      <span class="badge">Desplegado en EC2 · HTTPS</span>
+    </header>
+
+    <section class="hero">
+      <h1>Guía de despliegue en <em>EC2</em></h1>
+      <p>
+        Tu objetivo es publicar esta aplicación en internet con <strong>HTTPS</strong> en
+        <strong>devops-test.ethoscredito.mx</strong>.
+      </p>
+      <p>
+        Ethos ya provisionó la instancia EC2, el DNS y el Security Group (puertos 22, 80 y 443).
+        Los datos de acceso llegaron por correo. Primero corre la app en local para leer esta guía;
+        después despliégala en el servidor.
+      </p>
+    </section>
+
+    <div class="notice">
+      <strong>Uso de IA:</strong> puedes usar herramientas de inteligencia artificial para
+      <strong>buscar métodos, documentación y procedimientos</strong> que te ayuden a resolver la prueba.
+      <strong>No está permitido</strong> usar un agente de IA para que resuelva la prueba por ti
+      (despliegue, configuración o entrega automatizada). Si se detecta este uso, no podrás continuar
+      con tu proceso de selección.
+    </div>
+
+    <div class="status-row">
+      <div class="status-pill"><span class="dot"></span><span id="health-label">/health</span></div>
+      <div class="status-pill"><span class="dot"></span><span id="ready-label">/ready</span></div>
+      <div class="status-pill"><span class="dot"></span><span>devops-test.ethoscredito.mx</span></div>
+    </div>
+
+    <p class="section-title">Proceso de despliegue</p>
+    <div class="steps">
+      <article class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h2>Revisar la app en local</h2>
+          <p>
+            Clona el repositorio en tu máquina, entra a <code>app-ethos-mock/</code> y levanta
+            Docker para ver los pasos antes de tocar el servidor.
+          </p>
+          <code class="code-block">git clone https://github.com/ethoscredito/ethos-devops-test.git
+cd ethos-devops-test/app-ethos-mock
+docker compose up --build</code>
+          <p>Validación: abre <code>http://localhost:8081</code> y confirma que ves esta guía.</p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h2>Conectarse por SSH al servidor</h2>
+          <p>
+            Usa la clave <code>prueba-devops.pem</code> y los datos de conexión enviados por correo.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h2>Configurar Git y clonar el repositorio</h2>
+          <p>
+            Acepta la invitación al repositorio de GitHub
+            (<code>ethoscredito/ethos-devops-test</code>), clónalo en la EC2 y entra a
+            <code>app-ethos-mock/</code>. No subas la clave <code>.pem</code> al repositorio.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h2>Levantar la app con Docker en el puerto 8081</h2>
+          <p>
+            Despliega la app para que escuche solo en <strong>localhost:8081</strong> — el Security
+            Group no expone ese puerto al exterior. Valida con <code>/health</code>.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">5</div>
+        <div>
+          <h2>Proxy reverso y certificado HTTPS</h2>
+          <p>
+            El DNS ya apunta al servidor. Configura un proxy reverso en los puertos 80/443 hacia
+            <code>http://127.0.0.1:8081</code> y obtén un certificado TLS válido para
+            <code>devops-test.ethoscredito.mx</code>.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">6</div>
+        <div>
+          <h2>Completar la prueba</h2>
+          <p>
+            La prueba se completa cuando la app es accesible en internet con HTTPS válido.
+            Debes ver esta misma página con el badge verde <strong>Desplegado en EC2 · HTTPS</strong>.
+          </p>
+          <code class="code-block">curl -s https://devops-test.ethoscredito.mx/health
+curl -s https://devops-test.ethoscredito.mx/ready</code>
+          <p>
+            Navegador: <strong>https://devops-test.ethoscredito.mx/</strong><br>
+            Entrega: responde sobre el <strong>mismo hilo de correo</strong> donde recibiste
+            la prueba cuando <strong>https://devops-test.ethoscredito.mx/</strong> esté en línea
+            con HTTPS. Fecha límite: lunes 29 de junio de 2026, 5:00 pm.
+          </p>
+        </div>
+      </article>
+    </div>
+
+    <div class="note">
+      <strong>Ethos provee:</strong> EC2, DNS (<code>devops-test.ethoscredito.mx</code>), SG (22, 80, 443), invitación al repo.<br>
+      <strong>Evaluado provee:</strong> preview local, despliegue en <code>:8081</code>, proxy reverso, certificado TLS y confirmación respondiendo al mismo correo de la prueba.
+    </div>
+
+    <footer>
+      <strong>EthosPay</strong> · Prueba DevOps · Servicio <code>ethos-mock</code>
+    </footer>
+  </div>
+
+  <script>
+    async function check(path, id, ok) {
+      const el = document.getElementById(id);
+      try {
+        const r = await fetch(path);
+        el.textContent = r.ok ? ok : path + ' — error ' + r.status;
+      } catch {
+        el.textContent = path + ' — pendiente';
+      }
+    }
+    check('/health', 'health-label', '/health — OK');
+    check('/ready', 'ready-label', '/ready — OK');
+  </script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 # app-ethos-mock
 
-Aplicación de la prueba DevOps. La guía completa está en la interfaz web (`html/index.html`).
+Aplicación mock de la prueba DevOps (Nginx + Docker). La guía completa está en la interfaz web (`html/index.html`).
 
-## Paso 1 — Revisar en local
+## Local
 
 ```bash
 git clone https://github.com/ethoscredito/ethos-devops-test.git
@@ -10,4 +10,6 @@ cd ethos-devops-test/app-ethos-mock
 docker compose up --build
 ```
 
-Abre **http://localhost:8081** y sigue los pasos 2–6 en la EC2.
+Abre **http://localhost:8081** y sigue la guía (tags IAM, roles por CLI, ECS o Kubernetes + GitHub Actions).
+
+Endpoints: `GET /health`, `GET /ready`.

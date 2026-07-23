@@ -1,15 +1,26 @@
-# AWS credentials
+# AWS credentials / secretos
 .env
 .env.*
 *.pem
 credentials
 aws-credentials*
+**/credentials-*.json
+**/access-*-v*.json
+**/boundary.json
+
+# Material interno Ethos (NO compartir con candidatos)
+docs/
+docs/**
+.ethos-internal/
+**/evaluacion-interna.md
+**/guia-iam-candidatos-consola.md
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+.cursor/
 
 # Python
 __pycache__/

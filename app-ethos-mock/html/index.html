@@ -19,6 +19,7 @@
       --ethos: #6366f1;
       --success: #22c55e;
       --step: #818cf8;
+      --plus: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -85,6 +86,18 @@
       font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.1em; color: var(--step); margin-bottom: 1rem;
     }
+    .section-title.plus { color: var(--plus); margin-top: 2rem; }
+    .paths {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;
+      margin-bottom: 1.75rem;
+    }
+    @media (max-width: 560px) { .paths { grid-template-columns: 1fr; } }
+    .path-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1rem 1.1rem;
+    }
+    .path-card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.35rem; }
+    .path-card p { font-size: 0.8rem; color: var(--muted); }
     .steps { display: flex; flex-direction: column; gap: 0; }
     .step {
       display: grid; grid-template-columns: 2.5rem 1fr; gap: 1rem;
@@ -96,9 +109,19 @@
       background: var(--surface); border: 1px solid var(--border);
       display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; color: var(--step);
     }
+    .step-num.plus {
+      color: var(--plus);
+      border-color: rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+    }
     .step h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.35rem; }
     .step p { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem; }
     .step p:last-of-type { margin-bottom: 0; }
+    .step ul {
+      font-size: 0.85rem; color: var(--muted);
+      margin: 0.35rem 0 0.5rem 1.1rem;
+    }
+    .step li { margin-bottom: 0.25rem; }
     .step code, .note code {
       font-family: ui-monospace, monospace; font-size: 0.78rem;
       background: var(--surface-2); padding: 0.15rem 0.4rem; border-radius: 4px;
@@ -117,6 +140,18 @@
       color: #e2e8f0;
       white-space: pre-wrap;
       overflow-x: auto;
+    }
+    .tag {
+      display: inline-block; font-size: 0.65rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.15rem 0.45rem; border-radius: 4px; margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+    .tag-core {
+      background: rgba(99, 102, 241, 0.2); color: #c7d2fe;
+    }
+    .tag-plus {
+      background: rgba(245, 158, 11, 0.2); color: #fcd34d;
     }
     .note {
       font-size: 0.8rem; color: var(--muted); padding: 0.75rem 1rem;
@@ -149,19 +184,21 @@
           <span>Prueba técnica DevOps</span>
         </div>
       </div>
-      <span class="badge">Desplegado en EC2 · HTTPS</span>
+      <span class="badge">ECS o Kubernetes · CI/CD</span>
     </header>
 
     <section class="hero">
-      <h1>Guía de despliegue en <em>EC2</em></h1>
+      <h1>Despliegue en <em>AWS</em> + GitHub Actions</h1>
       <p>
-        Tu objetivo es publicar esta aplicación en internet con <strong>HTTPS</strong> en
-        <strong>devops-test.ethoscredito.mx</strong>.
+        Publica esta aplicación en internet por <strong>HTTP</strong> detrás de un
+        <strong>Application Load Balancer</strong> (DNS tipo
+        <code>*.elb.amazonaws.com</code>), eligiendo <strong>ECS</strong> o
+        <strong>Kubernetes (EKS)</strong>, e incluye un pipeline de CI/CD con GitHub Actions.
       </p>
       <p>
-        Ethos ya provisionó la instancia EC2, el DNS y el Security Group (puertos 22, 80 y 443).
-        Los datos de acceso llegaron por correo. Primero corre la app en local para leer esta guía;
-        después despliégala en el servidor.
+        Ethos te envía por correo el acceso AWS (IAM acotado) e invitación al repo.
+        No hace falta dominio propio ni HTTPS para completar la prueba. Completa primero lo
+        <strong>obligatorio</strong>; lo marcado como <strong>plus</strong> es voluntario y suma.
       </p>
     </section>
 
@@ -173,92 +210,259 @@
       con tu proceso de selección.
     </div>
 
+    <div class="note" style="margin-top: 0; margin-bottom: 1.5rem;">
+      <strong>Acceso AWS (obligatorio leer):</strong> tu usuario IAM solo puede
+      <strong>crear y operar recursos etiquetados para ti</strong>. Sin los tags correctos,
+      Create/Update/Delete fallarán (AccessDenied). No podrás listar clusters ECS/EKS de la
+      cuenta ni operar clusters ajenos.
+      <br><br>
+      Tags en <strong>todo</strong> lo que crees (ECS, EKS, ECR, ALB, roles, etc.):
+      <code class="code-block" style="margin-top: 0.5rem;">ethos:candidate = &lt;tu-id&gt;   (el que te enviamos por correo)
+ethos:project   = devops-test
+Región: us-east-1
+ECR: ethos-cand-&lt;tu-id&gt;   (o ethos-cand-&lt;tu-id&gt;/...)
+Roles IAM: ethos-cand-&lt;tu-id&gt;-*</code>
+      No necesitas Route53 ni un dominio Ethos: la entrega usa el DNS público del ALB.
+      No subas Access Keys al repo.
+    </div>
+
+    <p class="section-title">Cómo trabajar con tu IAM (consola vs CLI)</p>
+    <div class="steps">
+      <article class="step">
+        <div class="step-num">!</div>
+        <div>
+          <h2>Roles IAM: créalos por CLI o IaC</h2>
+          <p>
+            En la consola de EKS/ECS es normal ver errores del tipo
+            <em>«No se pueden cargar los roles de IAM»</em> / falta
+            <code>iam:ListRoles</code>. <strong>No es un bloqueo de la prueba:</strong>
+            crea el rol tú (CLI, Terraform, etc.) con el prefijo y el permissions boundary
+            que te asignamos, y en la consola <strong>pega el ARN a mano</strong>.
+          </p>
+          <p>Reglas al crear roles:</p>
+          <ul>
+            <li>Nombre: <code>ethos-cand-&lt;tu-id&gt;-...</code> (ej. <code>...-eks-cluster</code>, <code>...-ecs-exec</code>)</li>
+            <li>Tag <code>ethos:candidate=&lt;tu-id&gt;</code></li>
+            <li>Permissions boundary:
+              <code>arn:aws:iam::816583873447:policy/EthosDevOpsCandidateBoundary</code></li>
+            <li>Adjunta solo policies AWS managed necesarias (cluster EKS, nodos, task execution ECS, etc.)</li>
+          </ul>
+          <code class="code-block"># Ejemplo: rol de cluster EKS (ajusta &lt;tu-id&gt; y el trust policy)
+aws iam create-role \
+  --role-name ethos-cand-&lt;tu-id&gt;-eks-cluster \
+  --assume-role-policy-document file://eks-trust.json \
+  --permissions-boundary arn:aws:iam::816583873447:policy/EthosDevOpsCandidateBoundary \
+  --tags Key=ethos:candidate,Value=&lt;tu-id&gt; Key=ethos:project,Value=devops-test
+
+aws iam attach-role-policy \
+  --role-name ethos-cand-&lt;tu-id&gt;-eks-cluster \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+# En la consola EKS: pega el ARN del rol (no uses el desplegable)</code>
+          <p>
+            Lo mismo aplica a roles de nodo EKS, task execution / task role de ECS:
+            créalos por CLI/IaC y referencia el ARN. Preferible dejar esos JSON/HCL en el repo.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">!</div>
+        <div>
+          <h2>Clusters y listados</h2>
+          <p>
+            <code>ecs:ListClusters</code> y <code>eks:ListClusters</code> están denegados a
+            propósito. Guarda el <strong>nombre</strong> del cluster/servicio que creaste y
+            úsalo en CLI (<code>describe</code>, <code>update-service</code>, <code>kubectl</code>
+            vía el cluster que tú provisionaste). No intentes inventariar la cuenta.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num">!</div>
+        <div>
+          <h2>ECR con tags (obligatorio)</h2>
+          <code class="code-block">aws ecr create-repository \
+  --repository-name ethos-cand-&lt;tu-id&gt; \
+  --tags Key=ethos:candidate,Value=&lt;tu-id&gt; Key=ethos:project,Value=devops-test \
+  --region us-east-1</code>
+          <p>Sin esos tags, <code>CreateRepository</code> (y casi cualquier Create) fallará.</p>
+        </div>
+      </article>
+    </div>
+
     <div class="status-row">
       <div class="status-pill"><span class="dot"></span><span id="health-label">/health</span></div>
       <div class="status-pill"><span class="dot"></span><span id="ready-label">/ready</span></div>
-      <div class="status-pill"><span class="dot"></span><span>devops-test.ethoscredito.mx</span></div>
+      <div class="status-pill"><span class="dot"></span><span>ALB · HTTP</span></div>
     </div>
 
-    <p class="section-title">Proceso de despliegue</p>
+    <p class="section-title">Elige un camino</p>
+    <div class="paths">
+      <div class="path-card">
+        <h3>Camino A — ECS</h3>
+        <p>ECR + servicio ECS (p. ej. Fargate) + Application Load Balancer en HTTP.</p>
+      </div>
+      <div class="path-card">
+        <h3>Camino B — Kubernetes</h3>
+        <p>Cluster (p. ej. EKS), Deployment/Service y exposición vía ALB (Ingress/LoadBalancer) en HTTP.</p>
+      </div>
+    </div>
+
+    <p class="section-title">Tareas obligatorias</p>
     <div class="steps">
       <article class="step">
         <div class="step-num">1</div>
         <div>
-          <h2>Revisar la app en local</h2>
+          <h2>Local, rama y contexto <span class="tag tag-core">Core</span></h2>
           <p>
-            Clona el repositorio en tu máquina, entra a <code>app-ethos-mock/</code> y levanta
-            Docker para ver los pasos antes de tocar el servidor.
+            Clona el repo, crea una rama a partir de <code>main</code> con tu id de candidato
+            y trabaja ahí (no en <code>main</code>). Entra a <code>app-ethos-mock/</code>,
+            levanta Docker, confirma <code>/health</code> y <code>/ready</code>. Decide ECS o
+            Kubernetes y documenta brevemente por qué.
           </p>
           <code class="code-block">git clone https://github.com/ethoscredito/ethos-devops-test.git
-cd ethos-devops-test/app-ethos-mock
+cd ethos-devops-test
+git checkout main
+git pull
+git checkout -b candidato/&lt;tu-id&gt;
+cd app-ethos-mock
 docker compose up --build</code>
-          <p>Validación: abre <code>http://localhost:8081</code> y confirma que ves esta guía.</p>
+          <p>
+            Ejemplo de rama: <code>candidato/christianmisel3</code>. Validación local:
+            <code>http://localhost:8081</code> muestra esta guía.
+          </p>
         </div>
       </article>
       <article class="step">
         <div class="step-num">2</div>
         <div>
-          <h2>Conectarse por SSH al servidor</h2>
+          <h2>Imagen en registry <span class="tag tag-core">Core</span></h2>
           <p>
-            Usa la clave <code>prueba-devops.pem</code> y los datos de conexión enviados por correo.
+            Construye la imagen a partir del <code>Dockerfile</code> existente y publícala en
+            <strong>ECR</strong> con nombre <code>ethos-cand-&lt;tu-id&gt;</code>, tags
+            <code>ethos:candidate</code> / <code>ethos:project</code>, y una etiqueta de imagen
+            trazable (commit SHA o semver).
           </p>
         </div>
       </article>
       <article class="step">
         <div class="step-num">3</div>
         <div>
-          <h2>Configurar Git y clonar el repositorio</h2>
+          <h2>Despliegue en el camino elegido <span class="tag tag-core">Core</span></h2>
           <p>
-            Acepta la invitación al repositorio de GitHub
-            (<code>ethoscredito/ethos-devops-test</code>), clónalo en la EC2 y entra a
-            <code>app-ethos-mock/</code>. No subas la clave <code>.pem</code> al repositorio.
+            Deja la app corriendo en tu camino (ECS o Kubernetes). Debe responder en red
+            privada o pública al menos en HTTP, con health checks alineados a
+            <code>/health</code> y <code>/ready</code>.
+          </p>
+          <p>
+            Incluye en el repo (o PR) la definición del despliegue: task definition / service
+            ECS, o manifiestos / Helm / Kustomize para Kubernetes. Preferible IaC o archivos
+            versionados frente a clics solo en consola.
+          </p>
+          <p>
+            <strong>Si usas la consola:</strong> cuando pida roles IAM y no cargue el
+            desplegable, pega el ARN del rol que creaste por CLI (sección de arriba).
+            Tagea cluster, nodos, servicios y balanceadores con tus tags desde el primer create.
           </p>
         </div>
       </article>
       <article class="step">
         <div class="step-num">4</div>
         <div>
-          <h2>Levantar la app con Docker en el puerto 8081</h2>
+          <h2>Exponer por HTTP en el ALB <span class="tag tag-core">Core</span></h2>
           <p>
-            Despliega la app para que escuche solo en <strong>localhost:8081</strong> — el Security
-            Group no expone ese puerto al exterior. Valida con <code>/health</code>.
+            Pon un <strong>Application Load Balancer</strong> (listener HTTP :80) delante de tu
+            servicio ECS o de tu Ingress/Service en EKS. La URL de entrega es el DNS del ALB,
+            por ejemplo <code>http://….elb.amazonaws.com</code> — <strong>sin dominio custom ni
+            HTTPS obligatorio</strong>.
+          </p>
+          <p>Validación (sustituye por tu DNS de ALB):</p>
+          <code class="code-block">curl -s http://&lt;tu-alb&gt;.elb.amazonaws.com/health
+curl -s http://&lt;tu-alb&gt;.elb.amazonaws.com/ready</code>
+          <p>
+            Debe responder OK desde internet. Tagea el ALB y target groups con tus tags.
           </p>
         </div>
       </article>
       <article class="step">
         <div class="step-num">5</div>
         <div>
-          <h2>Proxy reverso y certificado HTTPS</h2>
+          <h2>CI/CD con GitHub Actions <span class="tag tag-core">Core</span></h2>
           <p>
-            El DNS ya apunta al servidor. Configura un proxy reverso en los puertos 80/443 hacia
-            <code>http://127.0.0.1:8081</code> y obtén un certificado TLS válido para
-            <code>devops-test.ethoscredito.mx</code>.
+            Pipeline en <code>.github/workflows/</code> que, como mínimo:
+          </p>
+          <ul>
+            <li>Construya la imagen Docker</li>
+            <li>La suba al registry</li>
+            <li>Despliegue (o actualice) el servicio en tu camino</li>
+          </ul>
+          <p>
+            Usa secretos/OIDC de forma segura. El workflow debe dispararse (o poder desplegar)
+            desde tu rama <code>candidato/&lt;tu-id&gt;</code> (push a esa rama). No uses
+            <code>main</code> para tu entrega. Deja evidencia de al menos una corrida exitosa
+            en esa rama.
           </p>
         </div>
       </article>
       <article class="step">
         <div class="step-num">6</div>
         <div>
-          <h2>Completar la prueba</h2>
+          <h2>Entrega <span class="tag tag-core">Core</span></h2>
           <p>
-            La prueba se completa cuando la app es accesible en internet con HTTPS válido.
-            Debes ver esta misma página con el badge verde <strong>Desplegado en EC2 · HTTPS</strong>.
+            Responde en el <strong>mismo hilo de correo</strong> de la prueba con:
           </p>
-          <code class="code-block">curl -s https://devops-test.ethoscredito.mx/health
-curl -s https://devops-test.ethoscredito.mx/ready</code>
+          <ul>
+            <li>Nombre de tu rama <code>candidato/&lt;tu-id&gt;</code> (o enlace al branch)</li>
+            <li>URL HTTP pública del ALB (<code>http://….elb.amazonaws.com</code>)</li>
+            <li>Enlace al workflow de Actions exitoso (en tu rama)</li>
+            <li>Resumen corto: camino, arquitectura, cómo gestionaste IAM/secretos</li>
+            <li>Plus realizados (si aplica)</li>
+          </ul>
           <p>
-            Navegador: <strong>https://devops-test.ethoscredito.mx/</strong><br>
-            Entrega: responde sobre el <strong>mismo hilo de correo</strong> donde recibiste
-            la prueba cuando <strong>https://devops-test.ethoscredito.mx/</strong> esté en línea
-            con HTTPS. Fecha límite: lunes 29 de junio de 2026, 5:00 pm.
+            Criterio de éxito mínimo: rama propia desde <code>main</code> + ALB HTTP +
+            <code>/health</code> y <code>/ready</code> OK + pipeline que despliega.
           </p>
         </div>
       </article>
     </div>
 
+    <p class="section-title plus">Plus voluntarios</p>
+    <div class="steps">
+      <article class="step">
+        <div class="step-num plus">+</div>
+        <div>
+          <h2>Ambos caminos <span class="tag tag-plus">Plus</span></h2>
+          <p>
+            Despliega también el camino que no elegiste como principal. Documenta ambas URLs
+            de ALB (o cómo conviven). Ambos deben responder HTTP con health checks.
+          </p>
+        </div>
+      </article>
+      <article class="step">
+        <div class="step-num plus">+</div>
+        <div>
+          <h2>Automatizaciones a tu criterio <span class="tag tag-plus">Plus</span></h2>
+          <p>
+            Ejemplos (elige lo que aporte valor real; no hace falta hacerlos todos):
+          </p>
+          <ul>
+            <li>IaC completo (Terraform/CDK/CloudFormation) reproducible</li>
+            <li>Promoción por ambientes, rollback o blue/green / canary</li>
+            <li>Observabilidad (logs, métricas, alertas) y dashboards</li>
+            <li>Escaneo de imagen, políticas de red, least-privilege IAM</li>
+            <li>Documentación operativa (runbook) y etiquetado/costos</li>
+          </ul>
+          <p>Se valora criterio, seguridad y claridad más que el volumen de herramientas.</p>
+        </div>
+      </article>
+    </div>
+
     <div class="note">
-      <strong>Ethos provee:</strong> EC2, DNS (<code>devops-test.ethoscredito.mx</code>), SG (22, 80, 443), invitación al repo.<br>
-      <strong>Evaluado provee:</strong> preview local, despliegue en <code>:8081</code>, proxy reverso, certificado TLS y confirmación respondiendo al mismo correo de la prueba.
+      <strong>Ethos provee:</strong> usuario IAM acotado por tags (solo tus recursos ECS/EKS),
+      invitación al repo.<br>
+      <strong>Evaluado provee:</strong> recursos con tags correctos, decisión de camino,
+      registry + despliegue, ALB público en HTTP, GitHub Actions, y opcionalmente el segundo
+      camino y automatizaciones plus (HTTPS/dominio pueden ir como plus).
     </div>
 
     <footer>

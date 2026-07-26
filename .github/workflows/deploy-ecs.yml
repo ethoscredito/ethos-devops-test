@@ -104,7 +104,7 @@ jobs:
           tags: |
             ${{ steps.meta.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
             ${{ steps.meta.outputs.registry }}/${{ env.ECR_REPOSITORY }}:candidato-${{ env.CANDIDATE_ID }}
-.
+
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

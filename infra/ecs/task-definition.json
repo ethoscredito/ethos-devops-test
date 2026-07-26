@@ -1,0 +1,45 @@
+{
+  "family": "ethos-cand-christianmisel3-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-christianmisel3-ecs-execution"",
+  "taskRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-christianmisel3-ecs-task",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "containerDefinitions": [
+    {
+      "name": "app-ethos-mock",
+      "image": "__IMAGE__",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 8081,
+          "hostPort": 8081,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [],
+      "readonlyRootFilesystem": false,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ethos-cand-christianmisel3",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "app"
+        }
+      }
+    }
+  ],
+  "tags": [
+    { "key": "ethos:candidate", "value": "christianmisel3" },
+    { "key": "ethos:project", "value": "devops-test" },
+    { "key": "Name", "value": "ethos-cand-christianmisel3" },
+    { "key": "ManagedBy", "value": "cli" }
+  ]
+}

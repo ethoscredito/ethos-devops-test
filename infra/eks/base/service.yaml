@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-ethos-mock
+  namespace: ethos-cand-lucio-o-dev
+  labels:
+    app: app-ethos-mock
+spec:
+  # ClusterIP: la exposición pública la hace el Ingress -> ALB.
+  type: ClusterIP
+  selector:
+    app: app-ethos-mock
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ethos-cand-lucio-o-dev
+  labels:
+    ethos.candidate: lucio-o-dev
+    ethos.project: devops-test

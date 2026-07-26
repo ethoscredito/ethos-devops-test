@@ -1,0 +1,275 @@
+name: CD - ECS Fargate (lucio-o-dev)
+
+# Entrega desde la rama del candidato. main NO despliega: no aparece en los
+# triggers, así que un merge a main nunca dispara este workflow.
+on:
+  push:
+    branches:
+      - candidato/lucio-o-dev
+    paths-ignore:
+      - "**/*.md"
+      - "docs-lucio-o-dev/**"
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag existente en ECR a redesplegar (vacío = build del commit actual)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ecs-deploy-lucio-o-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  CANDIDATE_ID: lucio-o-dev
+  PROJECT_TAG: devops-test
+  ECR_REPOSITORY: ethos-cand-lucio-o-dev
+  ECS_CLUSTER: ethos-cand-lucio-o-dev-ecs-cluster
+  ECS_SERVICE: ethos-cand-lucio-o-dev-svc
+  TASK_FAMILY: ethos-cand-lucio-o-dev-task
+  ALB_NAME: ethos-cand-lucio-o-dev-alb
+  CONTAINER_NAME: app-ethos-mock
+  BUILD_CONTEXT: app-ethos-mock
+
+permissions:
+  contents: read
+  id-token: write # necesario para OIDC
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. Guard de secretos: el pipeline se cae antes de construir si alguien
+  #    dejó una llave de AWS en el árbol.
+  # -------------------------------------------------------------------------
+  secret-guard:
+    name: Guard de secretos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buscar credenciales en el arbol
+        run: bash ci/check-no-secrets.sh
+
+  # -------------------------------------------------------------------------
+  # 2. Build y push a ECR con tag trazable (SHA del commit).
+  # -------------------------------------------------------------------------
+  build:
+    name: Build y push a ECR
+    needs: secret-guard
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.meta.outputs.image_uri }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC preferido. Si la variable de repo AWS_OIDC_ROLE_ARN existe se usa
+      # el rol federado; si no, se cae a los secrets de la cuenta del candidato.
+      - name: Credenciales AWS (OIDC)
+        if: vars.AWS_OIDC_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-session-name: gha-build-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Credenciales AWS (secrets)
+        if: vars.AWS_OIDC_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Login a Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Calcular tags de imagen
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            TAG="${{ inputs.image_tag }}"
+            echo "redeploy=true" >> "$GITHUB_OUTPUT"
+          else
+            TAG="sha-$(git rev-parse --short=12 HEAD)"
+            echo "redeploy=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "image_tag=$TAG"                          >> "$GITHUB_OUTPUT"
+          echo "image_uri=$REGISTRY/$ECR_REPOSITORY:$TAG" >> "$GITHUB_OUTPUT"
+          echo "registry=$REGISTRY"                       >> "$GITHUB_OUTPUT"
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build y push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BUILD_CONTEXT }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.meta.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.meta.outputs.registry }}/${{ env.ECR_REPOSITORY }}:candidato-${{ env.CANDIDATE_ID }}
+          # Etiquetas OCI para poder rastrear la imagen al commit exacto.
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.image_tag }}
+            ethos.candidate=${{ env.CANDIDATE_ID }}
+            ethos.project=${{ env.PROJECT_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resumen del build
+        run: |
+          {
+            echo "### Imagen publicada"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Repositorio ECR | \`$ECR_REPOSITORY\` |"
+            echo "| Tag | \`${{ steps.meta.outputs.image_tag }}\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # 3. Rollout en ECS: nueva revisión de la task definition apuntando a la
+  #    imagen recién publicada + update-service + espera de estabilidad.
+  # -------------------------------------------------------------------------
+  deploy:
+    name: Deploy a ECS Fargate
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: ethos-devops-test-lucio-o-dev
+      url: ${{ steps.alb.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credenciales AWS (OIDC)
+        if: vars.AWS_OIDC_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-session-name: gha-deploy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Credenciales AWS (secrets)
+        if: vars.AWS_OIDC_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      # Se toma la revisión activa y solo se cambia la imagen: la topología
+      # (cpu, memoria, roles, logs) sigue siendo propiedad de Terraform.
+      - name: Registrar nueva revision de task definition
+        id: taskdef
+        env:
+          IMAGE_URI: ${{ needs.build.outputs.image_uri }}
+        run: |
+          set -euo pipefail
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_FAMILY" \
+            --query 'taskDefinition' \
+            --output json > current-task-def.json
+
+          jq \
+            --arg img  "$IMAGE_URI" \
+            --arg name "$CONTAINER_NAME" \
+            --arg cand "$CANDIDATE_ID" \
+            --arg proj "$PROJECT_TAG" \
+            --arg sha  "${{ github.sha }}" \
+            '
+            .containerDefinitions =
+              (.containerDefinitions | map(if .name == $name then .image = $img else . end))
+            | .tags = [
+                {key: "ethos:candidate", value: $cand},
+                {key: "ethos:project",   value: $proj},
+                {key: "ManagedBy",       value: "github-actions"},
+                {key: "GitCommit",       value: $sha}
+              ]
+            | del(
+                .taskDefinitionArn, .revision, .status, .requiresAttributes,
+                .compatibilities, .registeredAt, .registeredBy, .deregisteredAt
+              )
+            ' current-task-def.json > new-task-def.json
+
+          # Falla temprano si el contenedor esperado no existe en la task def.
+          if ! jq -e --arg name "$CONTAINER_NAME" --arg img "$IMAGE_URI" \
+               'any(.containerDefinitions[]; .name == $name and .image == $img)' \
+               new-task-def.json > /dev/null; then
+            echo "::error::No se encontro el contenedor '$CONTAINER_NAME' en la task definition '$TASK_FAMILY'."
+            exit 1
+          fi
+
+          ARN=$(aws ecs register-task-definition \
+                  --cli-input-json file://new-task-def.json \
+                  --query 'taskDefinition.taskDefinitionArn' \
+                  --output text)
+          echo "Nueva revision: $ARN"
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Actualizar servicio ECS
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.taskdef.outputs.arn }}" \
+            --query 'service.{service:serviceName,taskDef:taskDefinition,desired:desiredCount}' \
+            --output table
+
+      - name: Esperar despliegue estable
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          echo "Esperando que el servicio quede estable (circuit breaker activo, revierte solo si falla)..."
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].{running:runningCount,desired:desiredCount,taskDef:taskDefinition,status:status}' \
+            --output table
+
+      - name: Resolver DNS del ALB
+        id: alb
+        run: |
+          set -euo pipefail
+          DNS=$(aws elbv2 describe-load-balancers \
+                  --names "$ALB_NAME" \
+                  --query 'LoadBalancers[0].DNSName' --output text)
+          echo "alb_dns=$DNS"            >> "$GITHUB_OUTPUT"
+          echo "app_url=http://$DNS"     >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test contra el ALB (/health y /ready)
+        env:
+          BASE: http://${{ steps.alb.outputs.alb_dns }}
+        run: bash ci/smoke-test.sh "$BASE"
+
+      - name: Resumen del despliegue
+        if: always()
+        run: |
+          {
+            echo "### Despliegue - ECS Fargate detras de ALB"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Camino | A - ECS Fargate |"
+            echo "| URL publica | ${{ steps.alb.outputs.app_url }} |"
+            echo "| Health | ${{ steps.alb.outputs.app_url }}/health |"
+            echo "| Ready | ${{ steps.alb.outputs.app_url }}/ready |"
+            echo "| Imagen | \`${{ needs.build.outputs.image_tag }}\` |"
+            echo "| Cluster | \`$ECS_CLUSTER\` |"
+            echo "| Servicio | \`$ECS_SERVICE\` |"
+            echo "| Task definition | \`${{ steps.taskdef.outputs.arn }}\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,52 @@
+name: CI - Validacion (IaC y manifiestos)
+
+# Barrera de calidad barata: corre en cada push y PR de la rama del candidato
+# sin tocar AWS. Si esto falla, el despliegue no vale la pena intentarlo.
+on:
+  push:
+    branches:
+      - candidato/lucio-o-dev
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: fmt, validate y dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard de secretos
+        run: bash ci/check-no-secrets.sh
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra/
+
+      - name: terraform init y validate
+        working-directory: infra/ecs
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Validar manifiestos de Kubernetes
+        run: |
+          set -euo pipefail
+          kubectl kustomize infra/eks/base > /tmp/rendered.yaml
+          echo "Manifiestos renderizados:"
+          grep -E '^(kind|  name):' /tmp/rendered.yaml || true
+
+      - name: Lint de scripts shell
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning ci/*.sh scripts/*.sh

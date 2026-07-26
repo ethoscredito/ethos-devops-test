@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ethos-cand-lucio-o-dev
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+# includeSelectors: false — estas etiquetas son metadata, no deben entrar al
+# selector del Deployment (cambiarlo obligaría a recrear el ReplicaSet).
+labels:
+  - includeSelectors: false
+    pairs:
+      ethos.candidate: lucio-o-dev
+      ethos.project: devops-test
+      app.kubernetes.io/managed-by: kustomize
+
+# El pipeline hace: kustomize edit set image app-ethos-mock=<repo>:<sha>
+images:
+  - name: 816583873447.dkr.ecr.us-east-1.amazonaws.com/ethos-cand-lucio-o-dev
+    newTag: candidato-lucio-o-dev

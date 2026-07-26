@@ -1,0 +1,158 @@
+name: CD - EKS (plus, manual)
+
+# Camino B del enunciado, como plus voluntario.
+# Solo manual: el camino principal (ECS) es el que corre en cada push, y este
+# workflow depende de un cluster EKS que puede no existir todavia.
+on:
+  workflow_dispatch:
+    inputs:
+      cluster_name:
+        description: "Nombre del cluster EKS (eks:ListClusters esta denegado, hay que darlo)"
+        required: true
+        default: ethos-cand-lucio-o-dev-eks-cluster
+      image_tag:
+        description: "Tag en ECR a desplegar (vacio = build del commit actual)"
+        required: false
+        default: ""
+
+concurrency:
+  group: eks-deploy-lucio-o-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  CANDIDATE_ID: lucio-o-dev
+  PROJECT_TAG: devops-test
+  ECR_REPOSITORY: ethos-cand-lucio-o-dev
+  NAMESPACE: ethos-cand-lucio-o-dev
+  DEPLOYMENT: app-ethos-mock
+  INGRESS: app-ethos-mock
+  BUILD_CONTEXT: app-ethos-mock
+  KUSTOMIZE_DIR: infra/eks/base
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy a EKS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard de secretos
+        run: bash ci/check-no-secrets.sh
+
+      - name: Credenciales AWS (OIDC)
+        if: vars.AWS_OIDC_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-session-name: gha-eks-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Credenciales AWS (secrets)
+        if: vars.AWS_OIDC_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Login a Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Calcular tag de imagen
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            TAG="${{ inputs.image_tag }}"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            TAG="sha-$(git rev-parse --short=12 HEAD)"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image=${{ steps.ecr.outputs.registry }}/$ECR_REPOSITORY:$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build y push
+        if: steps.meta.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BUILD_CONTEXT }}
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.image }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            ethos.candidate=${{ env.CANDIDATE_ID }}
+            ethos.project=${{ env.PROJECT_TAG }}
+
+      - name: Configurar kubeconfig
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig \
+            --name "${{ inputs.cluster_name }}" \
+            --region "$AWS_REGION"
+          kubectl version --short || true
+
+      - name: Fijar imagen y aplicar manifiestos
+        run: |
+          set -euo pipefail
+          cd "$KUSTOMIZE_DIR"
+          kubectl kustomize . > /dev/null   # valida el kustomization
+          cd - > /dev/null
+
+          # Sustitucion del tag sin editar el YAML versionado.
+          kubectl apply -k "$KUSTOMIZE_DIR"
+          kubectl -n "$NAMESPACE" set image \
+            "deployment/$DEPLOYMENT" \
+            "$DEPLOYMENT=${{ steps.meta.outputs.image }}" \
+            --record=false
+
+      - name: Esperar rollout
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=8m
+          kubectl -n "$NAMESPACE" get pods -o wide
+
+      - name: Resolver DNS del ALB del Ingress
+        id: alb
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            DNS=$(kubectl -n "$NAMESPACE" get ingress "$INGRESS" \
+                    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            if [ -n "$DNS" ]; then
+              echo "alb_dns=$DNS" >> "$GITHUB_OUTPUT"
+              echo "URL: http://$DNS"
+              exit 0
+            fi
+            echo "  ... esperando que el AWS Load Balancer Controller provisione el ALB ($i/30)"
+            sleep 10
+          done
+          echo "::error::El Ingress no obtuvo hostname. Revisa que el AWS Load Balancer Controller este instalado."
+          exit 1
+
+      - name: Smoke test
+        run: bash ci/smoke-test.sh "http://${{ steps.alb.outputs.alb_dns }}"
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "### Despliegue - EKS (plus)"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Cluster | \`${{ inputs.cluster_name }}\` |"
+            echo "| Namespace | \`$NAMESPACE\` |"
+            echo "| URL publica | http://${{ steps.alb.outputs.alb_dns }} |"
+            echo "| Imagen | \`${{ steps.meta.outputs.image_tag }}\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,29 @@
+# Copiar a terraform.tfvars y ajustar.
+# terraform.tfvars está en .gitignore — NUNCA poner llaves de AWS aquí.
+# Las credenciales van por perfil del AWS CLI o variables de entorno.
+
+candidate_id = "lucio-o-dev"
+project_tag  = "devops-test"
+aws_region   = "us-east-1"
+
+# Perfil local del AWS CLI. En CI se deja vacío (usa el rol/las env vars).
+aws_profile = "ethos-cand"
+
+# IMPORTANTE: debe coincidir con el puerto que escucha app-ethos-mock dentro
+# del contenedor (revisar EXPOSE en app-ethos-mock/Dockerfile).
+container_port = 8081
+
+desired_count = 2
+task_cpu      = 256
+task_memory   = 512
+
+# Red: vacío = VPC default + sus subnets públicas en estas AZs.
+# vpc_id      = ""
+# subnet_ids  = []
+allowed_azs = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+# OIDC para GitHub Actions (ver docs/IAM-Y-SECRETOS.md).
+enable_github_oidc = false
+# github_oidc_provider_arn = "arn:aws:iam::816583873447:oidc-provider/token.actions.githubusercontent.com"
+github_repo   = "ethoscredito/ethos-devops-test"
+github_branch = "candidato/lucio-o-dev"

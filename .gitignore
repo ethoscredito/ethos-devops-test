@@ -29,3 +29,11 @@ __pycache__/
 
 # Build artifacts
 *.egg-info/
+
+# Terraform (agregado por candidato lucio-o-dev)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log

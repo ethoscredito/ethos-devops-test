@@ -1,0 +1,26 @@
+{
+  "cluster": "ethos-cand-rivaszamoramarky-cluster",
+  "serviceName": "ethos-cand-rivaszamoramarky-service",
+  "taskDefinition": "ethos-cand-rivaszamoramarky-task",
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:816583873447:targetgroup/ethos-cand-rivaszamoramarky-tg/db2081a33aebebf2",
+      "containerName": "app-ethos-mock",
+      "containerPort": 8081
+    }
+  ],
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-0123531c8d9283186",
+        "subnet-0841185da9f27cce1"
+      ],
+      "securityGroups": [
+        "sg-07bd280c1ecb8a92a"
+      ],
+      "assignPublicIp": "ENABLED"
+    }
+  }
+}

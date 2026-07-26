@@ -1,0 +1,31 @@
+{
+  "family": "ethos-cand-rivaszamoramarky-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-rivaszamoramarky-ecs-exec",
+  "containerDefinitions": [
+    {
+      "name": "app-ethos-mock",
+      "image": "816583873447.dkr.ecr.us-east-1.amazonaws.com/ethos-cand-rivaszamoramarky:03a4e64",
+      "portMappings": [
+        {
+          "containerPort": 8081,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ethos-cand-rivaszamoramarky",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,168 @@
+name: Deploy ECS
+
+on:
+  push:
+    branches:
+      - candidato/rivaszamoramarky
+    paths:
+      - "app-ethos-mock/**"
+      - ".github/workflows/ecs-deploy.yml"
+      - "infra/iam/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ecs-deploy-rivaszamoramarky
+  cancel-in-progress: false
+
+env:
+  AWS_ACCOUNT_ID: "816583873447"
+  AWS_REGION: us-east-1
+
+  CANDIDATE_ID: rivaszamoramarky
+  PROJECT_TAG: devops-test
+
+  ECR_REPOSITORY: ethos-cand-rivaszamoramarky
+
+  ECS_CLUSTER: ethos-cand-rivaszamoramarky-cluster
+  ECS_SERVICE: ethos-cand-rivaszamoramarky-service
+  ECS_CONTAINER_NAME: app-ethos-mock
+
+  TASK_DEFINITION_FILE: app-ethos-mock/task-definition.json
+
+  AWS_ROLE_ARN: arn:aws:iam::816583873447:role/ethos-cand-rivaszamoramarky-github-actions
+
+  ALB_URL: http://ethos-cand-rivaszamoramarky-alb-515510390.us-east-1.elb.amazonaws.com
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: github-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: build-image
+        working-directory: app-ethos-mock
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG="${GITHUB_SHA::12}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          echo "Building ${IMAGE_URI}"
+
+          docker build \
+            --tag "${IMAGE_URI}" \
+            .
+
+          docker push "${IMAGE_URI}"
+
+          echo "image=${IMAGE_URI}" >> "${GITHUB_OUTPUT}"
+          echo "image-tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Render ECS task definition
+        id: render-task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.TASK_DEFINITION_FILE }}
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Register tagged task definition
+        id: register-task-definition
+        env:
+          RENDERED_TASK_DEFINITION: ${{ steps.render-task-definition.outputs.task-definition }}
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "file://${RENDERED_TASK_DEFINITION}" \
+            --tags \
+              key=ethos:candidate,value="${CANDIDATE_ID}" \
+              key=ethos:project,value="${PROJECT_TAG}" \
+            --region "${AWS_REGION}" \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)
+
+          echo "Registered ${TASK_DEFINITION_ARN}"
+          echo "task-definition-arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Deploy task definition to ECS
+        env:
+          TASK_DEFINITION_ARN: ${{ steps.register-task-definition.outputs.task-definition-arn }}
+        run: |
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${TASK_DEFINITION_ARN}" \
+            --desired-count 1 \
+            --force-new-deployment \
+            --health-check-grace-period-seconds 30 \
+            --enable-ecs-managed-tags \
+            --propagate-tags SERVICE \
+            --region "${AWS_REGION}"
+
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}"
+
+      - name: Validate public endpoints
+        run: |
+          HEALTH_RESPONSE=$(curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 10 \
+            --retry-delay 10 \
+            "${ALB_URL}/health")
+
+          READY_RESPONSE=$(curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 10 \
+            --retry-delay 10 \
+            "${ALB_URL}/ready")
+
+          echo "/health: ${HEALTH_RESPONSE}"
+          echo "/ready: ${READY_RESPONSE}"
+
+          test "${HEALTH_RESPONSE}" = "OK"
+          test "${READY_RESPONSE}" = "OK"
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "## ECS deployment completed"
+            echo ""
+            echo "- Image: \`${{ steps.build-image.outputs.image }}\`"
+            echo "- Task definition: \`${{ steps.register-task-definition.outputs.task-definition-arn }}\`"
+            echo "- Cluster: \`${ECS_CLUSTER}\`"
+            echo "- Service: \`${ECS_SERVICE}\`"
+            echo "- Health: \`${ALB_URL}/health\`"
+            echo "- Ready: \`${ALB_URL}/ready\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

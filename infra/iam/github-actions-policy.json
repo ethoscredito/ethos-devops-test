@@ -10,14 +10,16 @@
       "Resource": "*"
     },
     {
-      "Sid": "PushImageToCandidateRepository",
+      "Sid": "PushAndScanCandidateImage",
       "Effect": "Allow",
       "Action": [
         "ecr:BatchCheckLayerAvailability",
         "ecr:CompleteLayerUpload",
         "ecr:InitiateLayerUpload",
         "ecr:PutImage",
-        "ecr:UploadLayerPart"
+        "ecr:UploadLayerPart",
+        "ecr:StartImageScan",
+        "ecr:DescribeImageScanFindings"
       ],
       "Resource": "arn:aws:ecr:us-east-1:816583873447:repository/ethos-cand-rivaszamoramarky"
     },

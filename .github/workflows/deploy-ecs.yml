@@ -1,4 +1,4 @@
-name: christianmisel3 deploy ecs
+name: christianmisel3 deploy ECS
 
 on:
   push:

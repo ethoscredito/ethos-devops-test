@@ -59,7 +59,6 @@ jobs:
     needs: secret-guard
     runs-on: ubuntu-latest
     outputs:
-      image_uri: ${{ steps.meta.outputs.image_uri }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -101,7 +100,6 @@ jobs:
             echo "redeploy=false" >> "$GITHUB_OUTPUT"
           fi
           echo "image_tag=$TAG"                          >> "$GITHUB_OUTPUT"
-          echo "image_uri=$REGISTRY/$ECR_REPOSITORY:$TAG" >> "$GITHUB_OUTPUT"
           echo "registry=$REGISTRY"                       >> "$GITHUB_OUTPUT"
 
       - name: Configurar Buildx
@@ -177,9 +175,15 @@ jobs:
       - name: Registrar nueva revision de task definition
         id: taskdef
         env:
-          IMAGE_URI: ${{ needs.build.outputs.image_uri }}
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
         run: |
           set -euo pipefail
+
+          # GitHub descarta cualquier output de job que contenga un valor
+          # enmascarado, y mask-aws-account-id oculta el account id. Por eso la
+          # URI completa no puede viajar entre jobs: se rearma aqui.
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
           sed "s|__IMAGE__|${IMAGE_URI}|g" infra/ecs/task-definition.json \
             | jq --arg sha "${{ github.sha }}" \

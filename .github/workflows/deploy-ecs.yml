@@ -33,7 +33,7 @@ env:
 
 permissions:
   contents: read
-  id-token: write C
+  id-token: write 
 
 jobs:
   

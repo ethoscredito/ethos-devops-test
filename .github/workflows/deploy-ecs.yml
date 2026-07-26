@@ -169,8 +169,11 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
 
-      # Se toma la revisión activa y solo se cambia la imagen: la topología
-      # (cpu, memoria, roles, logs) sigue siendo propiedad de Terraform.
+      # ecs:DescribeTaskDefinition esta denegado para el usuario del candidato
+      # (esa API no admite permisos a nivel de recurso, de modo que una regla
+      # condicionada por tags nunca la habilita). La definicion viene
+      # versionada en el repo y aqui solo se le inyecta la imagen recien
+      # publicada: mismo resultado, sin depender de un permiso que no existe.
       - name: Registrar nueva revision de task definition
         id: taskdef
         env:
@@ -178,37 +181,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          aws ecs describe-task-definition \
-            --task-definition "$TASK_FAMILY" \
-            --query 'taskDefinition' \
-            --output json > current-task-def.json
+          sed "s|__IMAGE__|${IMAGE_URI}|g" infra/ecs/task-definition.json \
+            | jq --arg sha "${{ github.sha }}" \
+                 '.tags += [{"key": "GitCommit", "value": $sha}]' > new-task-def.json
 
-          jq \
-            --arg img  "$IMAGE_URI" \
-            --arg name "$CONTAINER_NAME" \
-            --arg cand "$CANDIDATE_ID" \
-            --arg proj "$PROJECT_TAG" \
-            --arg sha  "${{ github.sha }}" \
-            '
-            .containerDefinitions =
-              (.containerDefinitions | map(if .name == $name then .image = $img else . end))
-            | .tags = [
-                {key: "ethos:candidate", value: $cand},
-                {key: "ethos:project",   value: $proj},
-                {key: "ManagedBy",       value: "github-actions"},
-                {key: "GitCommit",       value: $sha}
-              ]
-            | del(
-                .taskDefinitionArn, .revision, .status, .requiresAttributes,
-                .compatibilities, .registeredAt, .registeredBy, .deregisteredAt
-              )
-            ' current-task-def.json > new-task-def.json
-
-          # Falla temprano si el contenedor esperado no existe en la task def.
+          # Falla temprano si el contenedor esperado no quedo con la imagen nueva.
           if ! jq -e --arg name "$CONTAINER_NAME" --arg img "$IMAGE_URI" \
                'any(.containerDefinitions[]; .name == $name and .image == $img)' \
                new-task-def.json > /dev/null; then
-            echo "::error::No se encontro el contenedor '$CONTAINER_NAME' en la task definition '$TASK_FAMILY'."
+            echo "::error::La task definition no quedo apuntando a $IMAGE_URI"
             exit 1
           fi
 

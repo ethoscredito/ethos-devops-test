@@ -31,60 +31,16 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
   }
 }
 
-resource "aws_ecs_task_definition" "app" {
-  family                   = local.task_family
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.task_cpu
-  memory                   = var.task_memory
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
-
-  runtime_platform {
-    operating_system_family = "LINUX"
-    cpu_architecture        = "X86_64"
-  }
-
-  container_definitions = jsonencode([
-    {
-      name      = var.container_name
-      image     = local.image_uri
-      essential = true
-
-      portMappings = [
-        {
-          name          = "http"
-          containerPort = var.container_port
-          hostPort      = var.container_port
-          protocol      = "tcp"
-          appProtocol   = "http"
-        }
-      ]
-
-      environment = local.container_env
-
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.app.name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "app"
-        }
-      }
-
-      readonlyRootFilesystem = false
-    }
-  ])
-
-  tags = {
-    Name = local.task_family
-  }
-}
-
+# La task definition no la gestiona Terraform. El usuario del candidato no
+# tiene permiso de ecs:DescribeTaskDefinition (esa API no admite permisos a
+# nivel de recurso, de modo que una regla condicionada por tags nunca la
+# habilita) y el provider hace read-after-create. El JSON vive versionado en
+# task-definition.json y se registra con la CLI desde el pipeline, igual que
+# hace la action amazon-ecs-render-task-definition.
 resource "aws_ecs_service" "app" {
   name            = local.service_name
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
+  task_definition = local.task_family
   desired_count   = var.desired_count
 
   launch_type            = "FARGATE"
@@ -95,7 +51,7 @@ resource "aws_ecs_service" "app" {
   # Sin NAT gateway, la task necesita IP pública para hacer pull de ECR.
   network_configuration {
     subnets          = local.subnet_ids
-    security_groups  = [aws_security_group.service.id]
+    security_groups  = [local.service_sg_id]
     assign_public_ip = true
   }
 

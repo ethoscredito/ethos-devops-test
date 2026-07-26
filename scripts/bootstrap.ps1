@@ -28,6 +28,8 @@ param(
   [string]$Region       = 'us-east-1',
   [string]$CandidateId  = 'lucio-o-dev',
   [int]$ContainerPort   = 0,
+  [string]$AlbSecurityGroupId     = 'sg-07bd280c1ecb8a92a',
+  [string]$ServiceSecurityGroupId = 'sg-07bd280c1ecb8a92a',
   [switch]$SkipBuild
 )
 
@@ -78,7 +80,7 @@ Write-Host "  Tag de imagen: $ImageTag"
 
 Push-Location $InfraDir
 try {
-  $tfCommon = @("-var=candidate_id=$CandidateId", "-var=aws_region=$Region", "-var=aws_profile=$AwsProfile", "-var=container_port=$ContainerPort")
+  $tfCommon = @("-var=candidate_id=$CandidateId", "-var=aws_region=$Region", "-var=aws_profile=$AwsProfile", "-var=container_port=$ContainerPort", "-var=alb_security_group_id=$AlbSecurityGroupId", "-var=service_security_group_id=$ServiceSecurityGroupId")
 
   Say 'Fase 0/3 - terraform init'
   terraform init -input=false
@@ -114,7 +116,28 @@ try {
     Warn 'Build omitido (-SkipBuild). Se asume que el tag ya existe en ECR.'
   }
 
-  Say 'Fase 3/3 - aplicando infraestructura (IAM, ALB, ECS)'
+  # La task definition no la gestiona Terraform (ecs:DescribeTaskDefinition
+  # denegado), asi que se registra aqui con la CLI. Necesita que los roles y el
+  # log group existan antes, de ahi el apply parcial.
+  Say 'Fase 3/4 - prerequisitos de la task definition (roles IAM y log group)'
+  terraform apply -input=false -auto-approve `
+    "-target=aws_iam_role.ecs_execution" `
+    "-target=aws_iam_role.ecs_task" `
+    "-target=aws_iam_role_policy_attachment.ecs_execution_managed" `
+    "-target=aws_cloudwatch_log_group.app" @tfCommon
+  if ($LASTEXITCODE -ne 0) { Die 'Fallo el apply de prerequisitos.' }
+
+  Say 'Registrando task definition desde infra/ecs/task-definition.json'
+  $tdFile = Join-Path $InfraDir 'task-definition.json'
+  $tdTmp  = Join-Path $env:TEMP "task-def-$ImageTag.json"
+  $tdJson = (Get-Content $tdFile -Raw).Replace('__IMAGE__', "${EcrUrl}:${ImageTag}")
+  [System.IO.File]::WriteAllText($tdTmp, $tdJson, (New-Object System.Text.UTF8Encoding($false)))
+  $tdArn = aws ecs register-task-definition --cli-input-json "file://$tdTmp" --query 'taskDefinition.taskDefinitionArn' --output text
+  Remove-Item $tdTmp -Force
+  if (-not $tdArn) { Die 'No se pudo registrar la task definition.' }
+  Write-Host "  Task definition: $tdArn"
+
+  Say 'Fase 4/4 - aplicando infraestructura (ALB, listener, servicio ECS)'
   terraform apply -input=false -auto-approve @tfCommon "-var=image_tag=$ImageTag"
   if ($LASTEXITCODE -ne 0) { Die 'terraform apply fallo. Ver docs/RUNBOOK.md para los AccessDenied conocidos.' }
 

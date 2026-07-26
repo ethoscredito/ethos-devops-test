@@ -3,6 +3,8 @@
 # El ALB es la única puerta pública; las tasks solo aceptan tráfico del ALB.
 # ---------------------------------------------------------------------------
 resource "aws_security_group" "alb" {
+  count = local.create_alb_sg ? 1 : 0
+
   name        = "${local.name_prefix}-alb-sg"
   description = "HTTP publico hacia el ALB de ${local.name_prefix}"
   vpc_id      = local.vpc_id
@@ -17,9 +19,9 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
-  for_each = toset(var.ingress_cidrs)
+  for_each = local.create_alb_sg ? toset(var.ingress_cidrs) : toset([])
 
-  security_group_id = aws_security_group.alb.id
+  security_group_id = local.alb_sg_id
   description       = "HTTP entrante desde ${each.value}"
   cidr_ipv4         = each.value
   from_port         = 80
@@ -32,9 +34,11 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_tasks" {
-  security_group_id            = aws_security_group.alb.id
+  count = local.create_alb_sg && local.create_service_sg ? 1 : 0
+
+  security_group_id            = local.alb_sg_id
   description                  = "Solo hacia las tasks, al puerto de la app"
-  referenced_security_group_id = aws_security_group.service.id
+  referenced_security_group_id = local.service_sg_id
   from_port                    = var.container_port
   to_port                      = var.container_port
   ip_protocol                  = "tcp"
@@ -45,6 +49,8 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_tasks" {
 }
 
 resource "aws_security_group" "service" {
+  count = local.create_service_sg ? 1 : 0
+
   name        = "${local.name_prefix}-svc-sg"
   description = "Tasks Fargate de ${local.name_prefix}: solo tráfico del ALB"
   vpc_id      = local.vpc_id
@@ -59,9 +65,11 @@ resource "aws_security_group" "service" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "service_from_alb" {
-  security_group_id            = aws_security_group.service.id
+  count = local.create_service_sg ? 1 : 0
+
+  security_group_id            = local.service_sg_id
   description                  = "Tráfico de la app únicamente desde el ALB"
-  referenced_security_group_id = aws_security_group.alb.id
+  referenced_security_group_id = local.alb_sg_id
   from_port                    = var.container_port
   to_port                      = var.container_port
   ip_protocol                  = "tcp"
@@ -74,7 +82,9 @@ resource "aws_vpc_security_group_ingress_rule" "service_from_alb" {
 # Salida abierta: la task necesita alcanzar ECR y CloudWatch Logs por internet
 # (subnets públicas, sin NAT gateway para no inflar el costo de la prueba).
 resource "aws_vpc_security_group_egress_rule" "service_egress" {
-  security_group_id = aws_security_group.service.id
+  count = local.create_service_sg ? 1 : 0
+
+  security_group_id = local.service_sg_id
   description       = "Salida a ECR / CloudWatch Logs"
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
@@ -93,7 +103,7 @@ resource "aws_lb" "app" {
   internal           = false
   load_balancer_type = "application"
   ip_address_type    = "ipv4"
-  security_groups    = [aws_security_group.alb.id]
+  security_groups    = [local.alb_sg_id]
   subnets            = local.subnet_ids
 
   idle_timeout               = 60

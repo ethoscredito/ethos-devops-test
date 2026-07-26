@@ -40,7 +40,7 @@ output "ecs_service_name" {
 
 output "task_definition_family" {
   description = "Familia de la task definition que actualiza el pipeline."
-  value       = aws_ecs_task_definition.app.family
+  value       = local.task_family
 }
 
 output "container_name" {

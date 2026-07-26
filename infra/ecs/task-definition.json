@@ -1,0 +1,45 @@
+{
+  "family": "ethos-cand-lucio-o-dev-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-lucio-o-dev-ecs-exec",
+  "taskRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-lucio-o-dev-ecs-task",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "containerDefinitions": [
+    {
+      "name": "app-ethos-mock",
+      "image": "__IMAGE__",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 8081,
+          "hostPort": 8081,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [],
+      "readonlyRootFilesystem": false,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ethos-cand-lucio-o-dev",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "app"
+        }
+      }
+    }
+  ],
+  "tags": [
+    { "key": "ethos:candidate", "value": "lucio-o-dev" },
+    { "key": "ethos:project", "value": "devops-test" },
+    { "key": "Name", "value": "ethos-cand-lucio-o-dev-task" },
+    { "key": "ManagedBy", "value": "cli" }
+  ]
+}

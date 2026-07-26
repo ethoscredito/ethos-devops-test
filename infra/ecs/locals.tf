@@ -25,6 +25,13 @@ locals {
 
   subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : local.discovered_subnet_ids
 
+  # Reutilizacion de security groups: ver variables.tf.
+  create_alb_sg     = var.alb_security_group_id == ""
+  create_service_sg = var.service_security_group_id == ""
+
+  alb_sg_id     = local.create_alb_sg ? one(aws_security_group.alb[*].id) : var.alb_security_group_id
+  service_sg_id = local.create_service_sg ? one(aws_security_group.service[*].id) : var.service_security_group_id
+
   image_uri = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
 
   container_env = [

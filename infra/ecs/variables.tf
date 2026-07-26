@@ -178,3 +178,21 @@ variable "github_branch" {
   type        = string
   default     = "candidato/lucio-o-dev"
 }
+
+# ---------------------------------------------------------------------------
+# Security groups existentes.
+# El usuario del candidato no tiene ec2:CreateSecurityGroup en esta cuenta, de
+# modo que se reutiliza un security group ya creado. En blanco, Terraform los
+# crea, que es el camino correcto en una cuenta con permisos completos.
+# ---------------------------------------------------------------------------
+variable "alb_security_group_id" {
+  description = "ID de un security group existente para el ALB. En blanco, Terraform crea uno."
+  type        = string
+  default     = ""
+}
+
+variable "service_security_group_id" {
+  description = "ID de un security group existente para las tasks Fargate. En blanco, Terraform crea uno."
+  type        = string
+  default     = ""
+}

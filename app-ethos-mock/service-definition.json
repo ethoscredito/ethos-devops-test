@@ -15,7 +15,7 @@
     "awsvpcConfiguration": {
       "subnets": [
         "subnet-0123531c8d9283186",
-        "subnet-0841185da9f27cce1"
+        "subnet-0b84e10a452bdf1af"
       ],
       "securityGroups": [
         "sg-07bd280c1ecb8a92a"

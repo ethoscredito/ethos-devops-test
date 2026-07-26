@@ -1,4 +1,4 @@
-name: CD - ECS Fargate (christianmisel3)
+name: christianmisel3 deploy ecs
 
 on:
   push:

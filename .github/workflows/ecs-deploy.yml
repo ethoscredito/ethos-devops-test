@@ -151,8 +151,14 @@ jobs:
           echo "/health: ${HEALTH_RESPONSE}"
           echo "/ready: ${READY_RESPONSE}"
 
-          test "${HEALTH_RESPONSE}" = "OK"
-          test "${READY_RESPONSE}" = "OK"
+          echo "${HEALTH_RESPONSE}" | jq -e '
+            .status == "ok" and
+            .service == "ethos-mock"
+          '
+
+          echo "${READY_RESPONSE}" | jq -e '
+            .ready == true
+          '
 
       - name: Deployment summary
         run: |

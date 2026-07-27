@@ -82,7 +82,7 @@ jobs:
 
           echo "image=${IMAGE_URI}" >> "${GITHUB_OUTPUT}"
           echo "image-tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
-          
+
       - name: Scan image in Amazon ECR
         env:
           IMAGE_TAG: ${{ steps.build-image.outputs.image-tag }}
@@ -132,6 +132,76 @@ jobs:
             echo "Image scan completed: no critical findings detected."
           fi
 
+          mkdir -p reports
+
+          # Conservar también la respuesta original de AWS
+          printf '%s\n' "${FINDINGS}" \
+            > reports/ecr-scan-findings.json
+
+          {
+            echo ""
+            echo "### Critical and high vulnerabilities"
+            echo ""
+            echo "| Severity | CVE |"
+            echo "|---|---|"
+
+            printf '%s\n' "${FINDINGS}" | jq -r '
+              [
+                .imageScanFindings.findings[]?
+                | select(
+                    .severity == "CRITICAL" or
+                    .severity == "HIGH"
+                  )
+              ][0:10][]
+              | "| \(.severity) | `\(.name)` |"
+            '
+
+            echo ""
+            echo "The complete CSV and JSON reports are available in the workflow artifacts."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          # Convertir los hallazgos de ECR a CSV
+          printf '%s\n' "${FINDINGS}" | jq -r '
+            [
+              "CVE",
+              "Severity",
+              "URI",
+              "Description",
+              "Attributes"
+            ],
+            (
+              .imageScanFindings.findings[]? |
+              [
+                (.name // ""),
+                (.severity // "UNDEFINED"),
+                (.uri // ""),
+                (
+                  (.description // "")
+                  | gsub("[\r\n]+"; " ")
+                ),
+                (
+                  (.attributes // [])
+                  | map("\(.key)=\(.value // "")")
+                  | join("; ")
+                )
+              ]
+            )
+            | @csv
+          ' > reports/ecr-vulnerabilities.csv
+
+          echo "CSV rows generated:"
+          wc -l reports/ecr-vulnerabilities.csv
+
+      - name: Upload ECR vulnerability report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecr-vulnerabilities-${{ steps.build-image.outputs.image-tag }}
+          path: |
+            reports/ecr-vulnerabilities.csv
+            reports/ecr-scan-findings.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Render ECS task definition
         id: render-task-definition
         uses: aws-actions/amazon-ecs-render-task-definition@v1
@@ -139,6 +209,25 @@ jobs:
           task-definition: ${{ env.TASK_DEFINITION_FILE }}
           container-name: ${{ env.ECS_CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
+
+      - name: Capture current task definition
+        id: previous_task
+        run: |
+          PREVIOUS_TASK_DEFINITION_ARN=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" \
+            --query "services[0].taskDefinition" \
+            --output text)
+
+          if [ -z "${PREVIOUS_TASK_DEFINITION_ARN}" ] || \
+             [ "${PREVIOUS_TASK_DEFINITION_ARN}" = "None" ]; then
+            echo "::error::Could not determine the current task definition."
+            exit 1
+          fi
+
+          echo "Current task definition: ${PREVIOUS_TASK_DEFINITION_ARN}"
+          echo "task_definition_arn=${PREVIOUS_TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
 
       - name: Register tagged task definition
         id: register-task-definition
@@ -158,6 +247,7 @@ jobs:
           echo "task-definition-arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
 
       - name: Deploy task definition to ECS
+        id: deploy_service
         env:
           TASK_DEFINITION_ARN: ${{ steps.register-task-definition.outputs.task-definition-arn }}
         run: |
@@ -208,6 +298,43 @@ jobs:
           echo "${READY_RESPONSE}" | jq -e '
             .ready == true
           '
+
+      - name: Roll back failed deployment
+        if: >-
+          ${{
+            failure() &&
+            steps.deploy_service.outputs.started == 'true' &&
+            steps.previous_task.outputs.task_definition_arn != ''
+          }}
+        env:
+          PREVIOUS_TASK_DEFINITION_ARN: ${{ steps.previous_task.outputs.task_definition_arn }}
+        run: |
+          echo "::warning::Deployment failed. Rolling back to ${PREVIOUS_TASK_DEFINITION_ARN}"
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${PREVIOUS_TASK_DEFINITION_ARN}" \
+            --desired-count 1 \
+            --region "${AWS_REGION}"
+
+           echo "started=true" >> "${GITHUB_OUTPUT}"
+
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}"
+
+          {
+            echo "## ECS deployment rolled back"
+            echo ""
+            echo "The new deployment failed its stability or endpoint validation."
+            echo ""
+            echo "- Restored task definition: \`${PREVIOUS_TASK_DEFINITION_ARN}\`"
+            echo "- Cluster: \`${ECS_CLUSTER}\`"
+            echo "- Service: \`${ECS_SERVICE}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
 
       - name: Deployment summary
         run: |

@@ -1,45 +1,42 @@
 {
   "family": "ethos-cand-christianmisel3-task",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-christianmisel3-ecs-execution"",
-  "taskRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-christianmisel3-ecs-task",
-  "runtimePlatform": {
-    "operatingSystemFamily": "LINUX",
-    "cpuArchitecture": "X86_64"
-  },
+  "executionRoleArn": "arn:aws:iam::816583873447:role/ethos-cand-christianmisel3-ecs-execution",
   "containerDefinitions": [
     {
-      "name": "app-ethos-mock",
-      "image": "__IMAGE__",
+      "name": "ethos-mock",
+      "image": "816583873447.dkr.ecr.us-east-1.amazonaws.com/ethos-cand-christianmisel3:latest",
       "essential": true,
       "portMappings": [
         {
-          "name": "http",
           "containerPort": 8081,
           "hostPort": 8081,
-          "protocol": "tcp",
-          "appProtocol": "http"
+          "protocol": "tcp"
         }
       ],
-      "environment": [],
-      "readonlyRootFilesystem": false,
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8081/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 10
+      },
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/ethos-cand-christianmisel3",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "app"
+          "awslogs-stream-prefix": "ecs"
         }
       }
     }
-  ],
-  "tags": [
-    { "key": "ethos:candidate", "value": "christianmisel3" },
-    { "key": "ethos:project", "value": "devops-test" },
-    { "key": "Name", "value": "ethos-cand-christianmisel3" },
-    { "key": "ManagedBy", "value": "cli" }
   ]
 }

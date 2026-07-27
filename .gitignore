@@ -29,3 +29,20 @@ __pycache__/
 
 # Build artifacts
 *.egg-info/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform plan
+*.tfplan
+
+# Variables sensibles
+*.tfvars
+*.tfvars.json

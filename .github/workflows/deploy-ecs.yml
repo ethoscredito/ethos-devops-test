@@ -7,7 +7,16 @@ on:
 
 env:
   AWS_REGION: us-east-1
+
   ECR_REPOSITORY: ethos-cand-christianmisel3
+
+  ECS_CLUSTER: ethos-cand-christianmisel3-ecs-cluster
+
+  ECS_SERVICE: ethos-cand-christianmisel3-svc
+
+  TASK_FAMILY: ethos-cand-christianmisel3-task
+
+  CONTAINER_NAME: ethos-mock
 
 jobs:
 
@@ -29,6 +38,19 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: AWS Diagnostics
+        run: |
+          echo "=== Identity ==="
+          aws sts get-caller-identity
+
+          echo "=== Cluster ==="
+          aws ecs describe-clusters \
+            --clusters $ECS_CLUSTER || true
+
+          echo "=== Target Groups ==="
+          aws elbv2 describe-target-groups \
+            --query "TargetGroups[].TargetGroupName"
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -55,18 +77,48 @@ jobs:
           docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}
           docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
 
-      - name: Terraform Init
-        working-directory: infra/ecs
-        run: terraform init
+      - name: Build image URI
+        id: image
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-      - name: Terraform Validate
-        working-directory: infra/ecs
-        run: terraform validate
+          IMAGE_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:${GITHUB_SHA}
 
-      - name: Terraform Plan
-        working-directory: infra/ecs
-        run: terraform plan
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
-#        nombre: Terraform Apply
-#        directorio de trabajo: infra/ecs
-#        run: terraform apply -auto-approve
+      - name: Generate Task Definition
+        run: |
+          sed "s|__IMAGE__|${{ steps.image.outputs.image_uri }}|g" \
+            infra/ecs/task-definition.json \
+            > task-definition.generated.json
+
+          cat task-definition.generated.json
+
+      - name: Register Task Definition
+        id: task
+        run: |
+          ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.generated.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "arn=$ARN" >> $GITHUB_OUTPUT
+
+
+      - name: Update ECS Service
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition ${{ steps.task.outputs.arn }}
+
+      - name: Wait deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE
+
+      - name: Smoke Test
+        run: |
+          aws elbv2 describe-target-groups \
+            --query "TargetGroups[].TargetGroupName"
